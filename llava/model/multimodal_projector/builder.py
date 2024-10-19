@@ -1,6 +1,11 @@
 import torch
 import torch.nn as nn
+from torch.nn.init import trunc_normal_
+from torch.nn import functional as F
+from functools import partial
 import re
+
+from Router import SparseMoeBlock 
 
 
 class IdentityMap(nn.Module):
@@ -28,7 +33,17 @@ class SimpleResBlock(nn.Module):
     def forward(self, x):
         x = self.pre_norm(x)
         return x + self.proj(x)
+    
+class LinearProjector(nn.Module):
+    def __init__(self, mlp_depth, mm_hidden_size, hidden_size):
+        self.mlp = [nn.Linear(mm_hidden_size, hidden_size)]
+        for _ in range(1, mlp_depth):
+            self.mlp.append(nn.GELU())
+            self.mlp.append(nn.Linear(hidden_size, hidden_size))
 
+    def forward(self, x):
+        x = self.mlp(x)
+        return x
 
 def build_vision_projector(config, delay_load=False, **kwargs):
     projector_type = getattr(config, 'mm_projector_type', 'linear')
@@ -47,5 +62,8 @@ def build_vision_projector(config, delay_load=False, **kwargs):
 
     if projector_type == 'identity':
         return IdentityMap()
+    
+    if projector_type == 'moe':
+        return SparseMoeBlock(config)
 
     raise ValueError(f'Unknown projector type: {projector_type}')
