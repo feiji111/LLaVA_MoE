@@ -1,9 +1,13 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from Qformer import Qformer
-from TokenPacker import TokenPacker
-from MplugOwlVisualAbstractor import MplugOwlVisualAbstractorModel
+from .Qformer.Qformer import Qformer
+from .TokenPacker import TokenPacker
+from .MplugOwlVisualAbstractor import MplugOwlVisualAbstractorModel
+from .configuration import MplugOwlVisualAbstractorConfig
+
+from transformers import Blip2QFormerModel
+from transformers.configuration_utils import PretrainedConfig        
 
 class SparseMoeBlock(nn.Module):
     """
@@ -28,7 +32,11 @@ class SparseMoeBlock(nn.Module):
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
 
         # self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(config) for _ in range(self.num_experts)])
-        self.experts = nn.ModuleList([Qformer, TokenPacker, MplugOwlVisualAbstractorModel])
+        self.experts = nn.ModuleList([
+            Blip2QFormerModel(config.qformer_config),
+            TokenPacker(), 
+            MplugOwlVisualAbstractorModel(config.visual_abstractor_config, config.hidden_size)
+        ])
 
         # Jitter parameters
         self.jitter_noise = config.router_jitter_noise

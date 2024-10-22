@@ -1,21 +1,21 @@
 #!/bin/bash
 
-deepspeed llava/train/train_mem.py \
+deepspeed --include localhost:7 llava/train/train_mem.py \
     --deepspeed ./scripts/zero3.json \
-    --model_name_or_path lmsys/vicuna-13b-v1.5 \
+    --model_name_or_path /data/zhangkj/huggingface/hub/models--lmsys--vicuna-7b-v1.5/snapshots/3321f76e3f527bd14065daf69dad9344000a201d \
     --version v1 \
     --data_path ./playground/data/llava_v1_5_mix665k.json \
     --image_folder ./playground/data \
-    --vision_tower openai/clip-vit-large-patch14-336 \
-    --pretrain_mm_mlp_adapter ./checkpoints/llava-v1.5-13b-pretrain/mm_projector.bin \
-    --mm_projector_type mlp2x_gelu \
+    --vision_tower /data/zhangkj/huggingface/hub/models--openai--clip-vit-large-patch14-336/snapshots/ce19dc912ca5cd21c8a653c79e251e808ccabcd1 \
+    --pretrain_mm_mlp_adapter /data/zhangkj/huggingface/hub/models--liuhaotian--llava-v1.5-mlp2x-336px-pretrain-vicuna-7b-v1.5/snapshots/5414da88308e4287a29f2e9609256458afb0a981/mm_projector.bin \
+    --mm_projector_type moe \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --image_aspect_ratio pad \
     --group_by_modality_length True \
     --bf16 True \
-    --output_dir ./checkpoints/llava-v1.5-13b \
+    --output_dir ./checkpoints/llava-v1.5-7b \
     --num_train_epochs 1 \
     --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 4 \

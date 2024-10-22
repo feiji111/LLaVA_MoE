@@ -1,4 +1,15 @@
+import copy
+import os
+from typing import Union
+
 from transformers.configuration_utils import PretrainedConfig
+from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
+from transformers.utils import logging
+from transformers.models.auto import CONFIG_MAPPING
+
+from transformers import Blip2QFormerConfig
+
+logger = logging.get_logger(__name__)
 
 class MplugOwlVisualAbstractorConfig(PretrainedConfig):
     model_type = "mplug_owl_visual_abstract"
@@ -48,3 +59,36 @@ class MplugOwlVisualAbstractorConfig(PretrainedConfig):
             )
 
         return cls.from_dict(config_dict, **kwargs)
+
+class TokenPackerConfig():
+    def __init__(
+        self
+    ):
+        pass
+
+class QFormerConfig(Blip2QFormerConfig):
+    def __init__(self, num_learnable_queries, **kwargs):
+        super().__init__(**kwargs)
+        self.num_learnable_queries = num_learnable_queries
+
+
+class MoEConfig():
+    def __init__(
+        self,
+        hidden_size=4096,
+        intermediate_size=11008,
+        num_local_experts=4,
+        num_experts_per_tok=2,
+        router_jitter_noise=0.1,
+        visual_abstractor=None,
+        qformer_config=None,
+        tokenpacker_config=None
+    ):
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
+        self.num_local_experts = num_local_experts
+        self.num_experts_per_tok = num_experts_per_tok
+        self.router_jitter_noise = router_jitter_noise
+        self.visual_abstractor_config = MplugOwlVisualAbstractorConfig(**visual_abstractor)
+        self.qformer_config = QFormerConfig(**qformer_config)
+        self.tokenpacker_config = TokenPackerConfig(**tokenpacker_config)

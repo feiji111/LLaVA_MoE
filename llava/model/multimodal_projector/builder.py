@@ -1,12 +1,9 @@
 import torch
 import torch.nn as nn
-from torch.nn.init import trunc_normal_
-from torch.nn import functional as F
-from functools import partial
 import re
 
-from Router import SparseMoeBlock 
-
+from .Router import SparseMoeBlock 
+from .configuration import MoEConfig
 
 class IdentityMap(nn.Module):
     def __init__(self):
@@ -50,20 +47,19 @@ def build_vision_projector(config, delay_load=False, **kwargs):
 
     if projector_type == 'linear':
         return nn.Linear(config.mm_hidden_size, config.hidden_size)
-
-    mlp_gelu_match = re.match(r'^mlp(\d+)x_gelu$', projector_type)
-    if mlp_gelu_match:
-        mlp_depth = int(mlp_gelu_match.group(1))
-        modules = [nn.Linear(config.mm_hidden_size, config.hidden_size)]
-        for _ in range(1, mlp_depth):
-            modules.append(nn.GELU())
-            modules.append(nn.Linear(config.hidden_size, config.hidden_size))
-        return nn.Sequential(*modules)
-
-    if projector_type == 'identity':
-        return IdentityMap()
-    
-    if projector_type == 'moe':
-        return SparseMoeBlock(config)
+    elif projector_type == 'identity':
+        return IdentityMap() 
+    elif projector_type == 'moe':
+        moe_config = MoEConfig(**config.moe_config)
+        return SparseMoeBlock(moe_config)
+    else:
+        mlp_gelu_match = re.match(r'^mlp(\d+)x_gelu$', projector_type)
+        if mlp_gelu_match:
+            mlp_depth = int(mlp_gelu_match.group(1))
+            modules = [nn.Linear(config.mm_hidden_size, config.hidden_size)]
+            for _ in range(1, mlp_depth):
+                modules.append(nn.GELU())
+                modules.append(nn.Linear(config.hidden_size, config.hidden_size))
+            return nn.Sequential(*modules)
 
     raise ValueError(f'Unknown projector type: {projector_type}')

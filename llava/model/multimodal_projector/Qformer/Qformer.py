@@ -1216,19 +1216,20 @@ class BertForMaskedLM(BertPreTrainedModel):
         )
 
 class Qformer(nn.Module):
-    def __init__(self, num_query_token, vision_width, cross_attention_freq=2):
+    # def __init__(self, num_query_token, vision_width, cross_attention_freq=2):
+    def __init__(self, config):
         super(Qformer, self).__init__()
         encoder_config = BertConfig.from_pretrained("bert-base-uncased")
-        encoder_config.encoder_width = vision_width
+        encoder_config.encoder_width = config.mm_hidden_size
         # insert cross-attention layer every other block
         encoder_config.add_cross_attention = True
-        encoder_config.cross_attention_freq = cross_attention_freq
-        encoder_config.query_length = num_query_token
+        encoder_config.cross_attention_freq = config.cross_attention_freq
+        encoder_config.query_length = config.num_query_token
         self.Qformer = BertLMHeadModel.from_pretrained(
             "bert-base-uncased", config=encoder_config
         )
         self.query_tokens = nn.Parameter(
-            torch.zeros(1, num_query_token, encoder_config.hidden_size)
+            torch.zeros(1, config.num_query_token, encoder_config.hidden_size)
         )
         self.query_tokens.data.normal_(mean=0.0, std=encoder_config.initializer_range)
 
@@ -1240,9 +1241,7 @@ class Qformer(nn.Module):
             layer.intermediate = None
 
     def forward(self, image_embeds):
-        image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(
-            image.device
-        )
+        image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long)
 
         query_tokens = self.query_tokens.expand(image_embeds.shape[0], -1, -1)
         query_output = self.Qformer.bert(

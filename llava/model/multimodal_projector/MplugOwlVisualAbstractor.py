@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import math
 import numpy as np
 from typing import Any, Optional, Tuple, Union
+from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
 
 def get_abs_pos(abs_pos, tgt_size):
     # abs_pos: L, C
@@ -247,7 +248,7 @@ class MplugOwlVisualAbstractorAttention(nn.Module):
             ).requires_grad_(False)
 
             self.k_pos_embed = nn.Parameter(
-                torch.from_numpy(get_2d_sincos_pos_embed(config.encoder_hidden_size, config.grid_size, cls_token=config.cls_token)).float()
+                torch.from_numpy(get_2d_sincos_pos_embed(config.encoder_hidden_size, config.grid_size, cls_token=config.use_cls_token)).float()
             ).requires_grad_(False)
            
     def prune_heads(self, heads):
@@ -555,8 +556,9 @@ class MplugOwlVisualAbstractorModel(PreTrainedModel):
         sequence_output = self.visual_fc(sequence_output)
         sequence_output = torch.cat([sequence_output, self.vit_eos.repeat(sequence_output.shape[0], 1, 1)], dim=1)
 
-        return BaseModelOutputWithPooling(
-            last_hidden_state=sequence_output,
-            pooler_output=pooled_output,
-            hidden_states=encoder_outputs.hidden_states,
-        )
+        # return BaseModelOutputWithPooling(
+        #     last_hidden_state=sequence_output,
+        #     pooler_output=pooled_output,
+        #     hidden_states=encoder_outputs.hidden_states,
+        # )
+        return sequence_output
