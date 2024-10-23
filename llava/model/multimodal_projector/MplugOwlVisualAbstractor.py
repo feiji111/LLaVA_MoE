@@ -551,7 +551,7 @@ class MplugOwlVisualAbstractorModel(PreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = encoder_outputs[0]
-        pooled_output = sequence_output[:, 0, :]
+        # pooled_output = sequence_output[:, 0, :]
 
         sequence_output = self.visual_fc(sequence_output)
         sequence_output = torch.cat([sequence_output, self.vit_eos.repeat(sequence_output.shape[0], 1, 1)], dim=1)

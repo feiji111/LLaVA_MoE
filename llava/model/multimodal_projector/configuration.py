@@ -66,11 +66,10 @@ class TokenPackerConfig():
     ):
         pass
 
-class QFormerConfig(Blip2QFormerConfig):
-    def __init__(self, num_learnable_queries, **kwargs):
-        super().__init__(**kwargs)
-        self.num_learnable_queries = num_learnable_queries
-
+class QFormerConfig():
+    def __init__(self, num_query_tokens, **kwargs):
+        self.num_query_tokens = num_query_tokens
+        self.qformer_config = Blip2QFormerConfig(**kwargs)
 
 class MoEConfig():
     def __init__(

@@ -7,7 +7,8 @@ from .MplugOwlVisualAbstractor import MplugOwlVisualAbstractorModel
 from .configuration import MplugOwlVisualAbstractorConfig
 
 from transformers import Blip2QFormerModel
-from transformers.configuration_utils import PretrainedConfig        
+from transformers.configuration_utils import PretrainedConfig
+from .QFormer import QFormer   
 
 class SparseMoeBlock(nn.Module):
     """
