@@ -34,7 +34,7 @@ class SparseMoeBlock(nn.Module):
 
         # self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(config) for _ in range(self.num_experts)])
         self.experts = nn.ModuleList([
-            Blip2QFormerModel(config.qformer_config),
+            QFormer(config.qformer_config),
             TokenPacker(), 
             MplugOwlVisualAbstractorModel(config.visual_abstractor_config, config.hidden_size)
         ])

@@ -7,9 +7,9 @@ from .configuration import QFormerConfig
 import torch
 from torch import nn
 
-class QFormer(PreTrainedModel):
+class QFormer(Blip2QFormerModel):
     def __init__(self, config: QFormerConfig):
-        self.qformer = Blip2QFormerModel(config.qformer_config)
+        super().__init__(config.qformer_config)
         self.num_query_tokens = config.num_query_tokens
         self.query_tokens = nn.Parameter(torch.zeros(1, config.num_query_tokens, config.qformer_config.hidden_size))
 
@@ -29,7 +29,7 @@ class QFormer(PreTrainedModel):
         image_attention_mask = torch.ones(image_embeds.size()[:-1], dtype=torch.long, device=image_embeds.device)
 
         query_tokens = self.query_tokens.expand(image_embeds.shape[0], -1, -1)
-        query_outputs = self.qformer(
+        query_outputs = super().forward(
             query_embeds=query_tokens,
             encoder_hidden_states=image_embeds,
             encoder_attention_mask=image_attention_mask,
