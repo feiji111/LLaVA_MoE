@@ -16,6 +16,7 @@ class QFormer(Blip2QFormerModel):
     def forward(
         self, 
         image_embeds: Optional[torch.FloatTensor] = None,
+        image_embeds_multi: Optional[torch.FloatTensor] = None, #only used for tokenpacker
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None

@@ -32,29 +32,64 @@ class CLIPVisionTower(nn.Module):
 
         self.is_loaded = True
 
-    def feature_select(self, image_forward_outs):
+    # def feature_select(self, image_forward_outs):
+    #     image_features = image_forward_outs.hidden_states[self.select_layer]
+    #     if self.select_feature == 'patch':
+    #         image_features = image_features[:, 1:]
+    #     elif self.select_feature == 'cls_patch':
+    #         image_features = image_features
+    #     else:
+    #         raise ValueError(f'Unexpected select feature: {self.select_feature}')
+    #     return image_features
+
+    # @torch.no_grad()
+    # def forward(self, images):
+    #     if type(images) is list:
+    #         image_features = []
+    #         for image in images:
+    #             image_forward_out = self.vision_tower(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), output_hidden_states=True)
+    #             image_feature = self.feature_select(image_forward_out).to(image.dtype)
+    #             image_features.append(image_feature)
+    #     else:
+    #         image_forward_outs = self.vision_tower(images.to(device=self.device, dtype=self.dtype), output_hidden_states=True)
+    #         image_features = self.feature_select(image_forward_outs).to(images.dtype)
+
+    #    return image_features
+    def feature_select(self, image_forward_outs, layers=[12,16,22,23]):
+        image_feature_list = []
+        for l in layers:
+            image_feature_list.append(image_forward_outs.hidden_states[l])
+        image_features_multi = torch.cat(image_feature_list, dim=2)
+
         image_features = image_forward_outs.hidden_states[self.select_layer]
+
         if self.select_feature == 'patch':
             image_features = image_features[:, 1:]
+            image_features_multi = image_features_multi[:, 1:]
+
         elif self.select_feature == 'cls_patch':
             image_features = image_features
         else:
             raise ValueError(f'Unexpected select feature: {self.select_feature}')
-        return image_features
+        return image_features, image_features_multi
 
     @torch.no_grad()
     def forward(self, images):
+
         if type(images) is list:
             image_features = []
             for image in images:
                 image_forward_out = self.vision_tower(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), output_hidden_states=True)
-                image_feature = self.feature_select(image_forward_out).to(image.dtype)
-                image_features.append(image_feature)
+                image_feature, image_feature_multi = self.feature_select(image_forward_out)
+
+                image_features.append(image_feature.to(image.dtype))
+                image_features_multi.append(image_feature_multi.to(image.dtype))
+
         else:
             image_forward_outs = self.vision_tower(images.to(device=self.device, dtype=self.dtype), output_hidden_states=True)
-            image_features = self.feature_select(image_forward_outs).to(images.dtype)
+            image_features, image_features_multi = self.feature_select(image_forward_outs)
 
-        return image_features
+        return (image_features.to(images.dtype), image_features_multi.to(images.dtype))
 
     @property
     def dummy_feature(self):
