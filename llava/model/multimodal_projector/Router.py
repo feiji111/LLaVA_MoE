@@ -11,103 +11,76 @@ from transformers.configuration_utils import PretrainedConfig
 from .QFormer import QFormer
 from .Mlp_GELU import Mlp_GELU
 
-class SparseMoeBlock(nn.Module):
-    """
-    This implementation is
-    strictly equivalent to standard MoE with full capacity (no
-    dropped tokens). It's faster since it formulates MoE operations
-    in terms of block-sparse operations to accomodate imbalanced
-    assignments of tokens to experts, whereas standard MoE either
-    (1) drop tokens at the cost of reduced performance or (2) set
-    capacity factor to number of experts and thus waste computation
-    and memory on padding.
-    """
-
+class MoeBlock(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.hidden_dim = config.hidden_size
         self.ffn_dim = config.intermediate_size
         self.num_experts = config.num_local_experts
-        self.top_k = config.num_experts_per_tok
+        self.top_k = 1  # top-1 expert per token (for pruning)
 
         # gating
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
 
-        # self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(config) for _ in range(self.num_experts)])
+        # Define expert layers
         self.experts = nn.ModuleList([
-            # QFormer(config.qformer_config),
-            TokenPacker(scale_factor=4),
-            # MplugOwlVisualAbstractorModel(config.visual_abstractor_config, config.hidden_size)
-            Mlp_GELU("mlp2x_gelu")
+            TokenPacker(scale_factor=4),  # Example expert, you can have different types
+            Mlp_GELU("mlp2x_gelu")        # Another example expert
         ])
 
         # Jitter parameters
         self.jitter_noise = config.router_jitter_noise
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        """ """
-        #hidden_states Tuple(image_features, imge_features_multi)
-        
-        # for tokenpacker
-        hidden_states_multi = hidden_states[1]
+        """ Process hidden states with expert routing """
 
-        hidden_states = hidden_states[0]
+        # hidden_states is a tuple (image_features, image_features_multi)
+        hidden_states_multi = hidden_states[1]  # Used for token packing, etc.
+        hidden_states = hidden_states[0]        # [batch_size, seq_len, hidden_dim]
 
         batch_size, sequence_length, hidden_dim = hidden_states.shape
+
         if self.training and self.jitter_noise > 0:
             hidden_states *= torch.empty_like(hidden_states).uniform_(1.0 - self.jitter_noise, 1.0 + self.jitter_noise)
-        # hidden_states = hidden_states.view(-1, hidden_dim)
-        # router_logits: (batch * sequence_length, n_experts)
 
-        # router_logits: (batch, sequence_length, n_experts)
-        router_logits = self.gate(hidden_states)
+        # Calculate routing logits for each token
+        # router_logits: [batch_size, sequence_length, num_experts]
+        cls_token_weights = self.gate(hidden_states[:, 0, :])  # [batch_size, num_experts]
+        routing_weights = F.softmax(cls_token_weights, dim=-1)  # Softmax over num_experts
 
-        routing_weights = F.softmax(router_logits, dim=-1, dtype=torch.float)
+        # Find the top-1 expert for each image based on cls_token
+        _, top_expert_idx = torch.max(cls_token_weights, dim=-1)  # [batch_size], each is the index of the top-1 expert
 
-        # router_weights: [batch, n_experts]
-        routing_weights = routing_weights.mean(dim=1)
-
-        # (batch_size, sequence_length, top_k)
-        # routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
-        # routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
-        # we cast back to the input dtype
-        routing_weights = routing_weights.to(hidden_states.dtype)
-
-        # final_hidden_states = torch.zeros(
-        #     (batch_size * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
-        # )
+        # Prepare to gather the output of the chosen expert
         final_hidden_states = torch.zeros(
-            (batch_size, 36, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
+            (batch_size, sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
         )
 
-        # One hot encode the selected experts to create an expert mask
-        # this will be used to easily index which expert is going to be sollicitated
-
-        # [num_experts, top_k, sequance_length, batch_size]
-        # expert_mask = torch.nn.functional.one_hot(selected_experts, num_classes=self.num_experts).permute(3, 2, 1, 0)
-
-        # Loop over all available experts in the model and perform the computation on each expert
+        # Loop through all images and apply their chosen experts
         for expert_idx in range(self.num_experts):
             expert_layer = self.experts[expert_idx]
-            expert_ratio = routing_weights[:, expert_idx].unsqueeze(1).unsqueeze(2)
-            # [top_k, sequence_length, batch_size]
-            # idx, top_x = torch.where(expert_mask[expert_idx])
+            
+            # For each image, apply the corresponding expert (based on top_expert_idx)
+            expert_mask = (top_expert_idx == expert_idx)  # [batch_size], mask for the selected expert
 
-            # Index the correct hidden states and compute the expert hidden state for
-            # the current expert. We need to make sure to multiply the output hidden
-            # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
-            # current_state = hidden_states[None, top_x].reshape(-1, hidden_dim)
+            # Apply the expert to the tokens
             current_state = hidden_states
-            # current_hidden_states = expert_layer(current_state, hidden_states_multi) * routing_weights[top_x, idx, None]
-            current_hidden_states = expert_layer(current_state, hidden_states_multi) * expert_ratio
+            current_hidden_states = expert_layer(current_state, hidden_states_multi)
 
-            # However `index_add_` only support torch tensors for indexing so we'll use
-            # the `top_x` tensor here.
-            # final_hidden_states.index_add_(0, top_x, current_hidden_states.to(hidden_states.dtype))
+            # Add the result only for the selected expert's images
+            final_hidden_states[expert_mask] += current_hidden_states[expert_mask]
 
-            final_hidden_states += current_hidden_states
+        # Now we need to handle padding, ensuring all images in the batch have the same number of tokens.
+        # Get the number of remaining tokens (based on routing weights)
+        remaining_tokens = routing_weights.sum(dim=-1)  # [batch_size, sequence_length], sum of routing weights for each token
 
-        # final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
-        # final_hidden_states = final_hidden_states.view(batch_size, sequence_length, hidden_dim)
-        # return final_hidden_states, router_logits
+        # Find the maximum remaining token length
+        max_remaining_tokens = int(remaining_tokens.max().item())
+
+        # Padding step: pad the final_hidden_states to match the maximum remaining tokens
+        for i in range(batch_size):
+            if final_hidden_states[i].shape[0] < max_remaining_tokens:
+                pad_size = max_remaining_tokens - final_hidden_states[i].shape[0]
+                final_hidden_states[i] = F.pad(final_hidden_states[i], (0, 0, 0, pad_size), value=0)
+
         return final_hidden_states
